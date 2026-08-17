@@ -55,6 +55,6 @@ app.get("/api/news/:symbol", async (req,res)=>{
 
 app.get("/api/health",(req,res)=>res.json({ok:true,time:new Date().toISOString()}));
 
-app.get("*",(req,res)=>res.sendFile(path.join(__dirname,"public","index.html")));
+app.get("/{*splat}",(req,res)=>res.sendFile(path.join(__dirname,"public","index.html")));
 
 app.listen(PORT,()=>console.log(`Aktien-Wächter V7 läuft auf http://localhost:${PORT}`));
