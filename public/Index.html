@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Aktien-Wächter V7</title>
+<style>
+body{font-family:system-ui;margin:0;background:#f5f7fa;color:#17202a}header{background:#111827;color:#fff;padding:22px}
+main{max-width:1100px;margin:auto;padding:18px}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(330px,1fr));gap:16px}
+.card{background:#fff;border-radius:16px;padding:18px;box-shadow:0 2px 12px #0001}.row{display:flex;justify-content:space-between;gap:12px;margin:9px 0}
+h1,h2{margin:0 0 7px}.muted{color:#667085}.big{font-size:30px;font-weight:800}.signal{padding:7px 11px;border-radius:999px;font-weight:800}
+.buy{background:#dcfce7;color:#166534}.hold{background:#fef3c7;color:#92400e}.sell{background:#fee2e2;color:#991b1b}.neutral{background:#e5e7eb;color:#374151}
+.good{color:#15803d}.bad{color:#b91c1c}.tag{font-size:11px;font-weight:800;padding:3px 7px;border-radius:8px}.tagpos{background:#dcfce7;color:#166534}.tagneg{background:#fee2e2;color:#991b1b}.tagneu{background:#e5e7eb;color:#374151}
+.news{padding:10px 0;border-bottom:1px solid #eee}.tiny{font-size:12px}.form{display:flex;gap:8px;flex-wrap:wrap}input,button{font:inherit;padding:10px;border:1px solid #d0d5dd;border-radius:10px}button{background:#111827;color:#fff;cursor:pointer}
+.crit{display:flex;justify-content:space-between;font-size:14px;margin:6px 0}.criteria{border-top:1px solid #eee;margin-top:12px;padding-top:8px}
+</style></head>
+<body><header><main><h1>📈 Aktien-Wächter V7</h1><div>Backend-Live-Daten · 10-Kriterien-Score · News · Alarme</div></main></header>
+<main>
+<div id="status" class="card">Backend wird geprüft …</div>
+<div class="card" style="margin-top:16px"><h2>Mein Depot</h2><div id="portfolio"></div></div>
+<h2 style="margin:22px 0 10px">Meine Aktien</h2><div id="stocks" class="grid"></div>
+<div class="card" style="margin-top:16px"><div class="row"><h2>🧠 News</h2><button onclick="loadAll()">Aktualisieren</button></div><div id="news">Lade …</div></div>
+<div class="card" style="margin-top:16px"><h2>🔔 Alarm</h2><button onclick="notify()">Benachrichtigungen erlauben</button><span id="alarm" class="muted"></span></div>
+<p class="tiny muted">Keine automatische Order. Die Signale sind eine Entscheidungshilfe, keine Anlageberatung. Marktdaten können je nach Börse verzögert sein.</p>
+</main>
+<script>
+const stocks=[
+{name:"D-Wave Quantum",ticker:"QBTS",qty:31,cost:8.31,cur:"USD"},
+{name:"Circus SE",ticker:"CA1.DE",qty:19,cost:10.55,cur:"EUR"}
+];
+let data={},fx=1,news={},stocksEl='';
+
+function eur(s){if(!data[s.ticker]?.price)return null;return s.cur==="USD"?data[s.ticker].price/fx:data[s.ticker].price}
+function score(s){
+ const d=data[s.ticker]; if(!d||!d.price)return {text:"LIVE-DATEN FEHLEN",cls:"neutral",n:0};
+ const p=eur(s), r=(p-s.cost)/s.cost, c=d.closes||[]; let n=0, it=[];
+ function add(a,ok,t){if(ok)n++;it.push([a,ok,t])}
+ add("Kurs über Einstand",r>=0,r>=0?"positiv":"negativ");
+ add("Gewinnzone",r>=.10,r>=.10?"mind. +10 %":"unter +10 %");
+ add("SMA20",d.above20,d.above20?"positiv":"negativ");
+ add("SMA50",d.above50,d.above50?"positiv":"negativ");
+ let mom=c.length>=20?p>(c.at(-20)/(s.cur==="USD"?fx:1)):false;
+ add("20-Tage-Momentum",mom,mom?"positiv":"negativ");
+ let avg=c.slice(-20).reduce((a,b)=>a+b,0)/Math.min(20,c.length);
+ add("Volatilität",avg?Math.abs(d.price-avg)/avg<.12:false,"im Rahmen / erhöht");
+ let hi=Math.max(...c.slice(-50));
+ add("Drawdown",hi?(d.price/hi)>.8:false,"kein starker Rückgang");
+ const fund=s.ticker==="QBTS";
+ add("Fundamentale Lage",fund,fund?"Bookings/Finanzierung positiv, Verluste bleiben Risiko":"Prognose stark reduziert");
+ add("Event-Risiko",false,s.ticker==="CA1.DE"?"Bericht 02.09.2026":s.ticker==="QBTS"?"Bericht vorauss. 05.11.2026":"");
+ add("Finanzielle Widerstandskraft",fund,fund?"relativ stärker":"vorsichtig");
+ let cls=n>=8?"buy":n<=3?"sell":"hold", text=cls==="buy"?"KAUFEN / AUFSTOCKEN PRÜFEN":cls==="sell"?"VERKAUF PRÜFEN":"HALTEN / BEOBACHTEN";
+ return {text,cls,n,it};
+}
+function render(){
+ let total=stocks.reduce((a,s)=>a+s.qty*s.cost,0), val=stocks.reduce((a,s)=>a+(eur(s)||0)*s.qty,0);
+ portfolio.innerHTML=stocks.map(s=>`<div class="row"><span><b>${s.name}</b><br>${s.qty} × ${s.cost.toFixed(2)} €</span><b>${(s.qty*s.cost).toFixed(2)} €</b></div>`).join("")+
+ `<hr><div class="row"><b>Einstand</b><b>${total.toFixed(2)} €</b></div><div class="row"><b>Wert</b><b>${val?val.toFixed(2)+" €":"—"}</b></div>`;
+ stocksEl="";
+ for(const s of stocks){const p=eur(s), pnl=p==null?null:(p-s.cost)*s.qty, pct=p==null?null:(p/s.cost-1)*100,z=score(s);
+ stocksEl+=`<div class="card"><div class="row"><div><h2>${s.name}</h2><div class="muted">${s.ticker}</div></div><span class="signal ${z.cls}">${z.text}</span></div>
+ <div class="muted">Mein Gewinn / Verlust</div><div class="big">${pnl==null?"—":(pnl>=0?"+":"")+pnl.toFixed(2)+" € ("+(pct>=0?"+":"")+pct.toFixed(1)+" %)"}</div>
+ <div class="row"><span>Aktueller Kurs</span><b>${p==null?"—":p.toFixed(2)+" €"}</b></div><div class="row"><span>Score</span><b>${z.n}/10</b></div>
+ <div class="criteria">${z.it.map(x=>`<div class="crit"><span>${x[0]}</span><b class="${x[1]?"good":"bad"}">${x[1]?"✓":"✕"} ${x[2]}</b></div>`).join("")}</div></div>`}
+ document.getElementById("stocks").innerHTML=stocksEl;
+}
+async function api(u){const r=await fetch(u);if(!r.ok)throw Error(await r.text());return r.json()}
+async function loadAll(){
+ try{
+  status.innerHTML="🟢 Backend verbunden – Live-Daten werden geladen …";
+  const q=await api("/api/quotes?symbols=QBTS,CA1.DE"); Object.assign(data,q);
+  const fxq=await api("/api/quote/EURUSD"); fx=fxq.price||1;
+  for(const s of stocks){try{news[s.ticker]=await api("/api/news/"+encodeURIComponent(s.ticker))}catch(e){news[s.ticker]=[]}}
+  render(); renderNews(); status.innerHTML="🟢 Live-Daten verbunden · letzter Abruf "+new Date().toLocaleTimeString("de-DE");
+ }catch(e){status.innerHTML="🔴 Live-Daten konnten nicht geladen werden: "+e.message}
+}
+function renderNews(){let a=[];for(const s of stocks)(news[s.ticker]||[]).slice(0,5).forEach(x=>a.push({...x,stock:s.name}));
+ a.sort((x,y)=>new Date(y.date)-new Date(x.date));
+ document.getElementById("news").innerHTML=a.length?a.slice(0,10).map(x=>`<div class="news"><b>${x.stock}</b><div>${x.title}</div><div class="tiny muted">${new Date(x.date).toLocaleString("de-DE")}</div></div>`).join(""):"Keine News verfügbar."}
+function notify(){if("Notification"in window)Notification.requestPermission().then(x=>alarm.textContent=x==="granted"?" Aktiv":" Nicht erlaubt")}
+loadAll();setInterval(loadAll,300000);
+</script></body></html>
